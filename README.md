@@ -20,7 +20,8 @@ DATABRICKS_CLIENT_SECRET=<client-secret>
 ## Run Locally
 
 ```bash
-uv run streamlit run app.py
+cp .env.example .env # then supply credentials
+uv run --env-file .env streamlit run app.py
 ```
 
 ## Deploy to Posit Connect
