@@ -4,12 +4,10 @@ from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
 from queries import QueryService
 
 st.set_page_config(
-    page_title="GLD Availability",
+    page_title="GLD Platform",
     page_icon="📊",
     layout="wide"
 )
-
-st.title("GLD Availability")
 
 
 @st.cache_data(ttl=300)
