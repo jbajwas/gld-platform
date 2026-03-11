@@ -1,0 +1,6 @@
+streamlit
+streamlit-aggrid
+pandas>=2.0
+rsconnect-python
+databricks-sql-connector[pyarrow]
+databricks-sdk
