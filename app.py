@@ -25,7 +25,7 @@ gb.configure_default_column(
     resizable=True,
     filter=True
 )
-gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=25)
+gb.configure_grid_options(suppressPaginationPanel=True)
 gb.configure_side_bar(filters_panel=True, columns_panel=True)
 grid_options = gb.build()
 
