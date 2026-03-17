@@ -88,6 +88,6 @@ class QueryService:
     def get_gld_availability(self):
         query = """
             SELECT *
-            FROM prd_mega.sgld48.gld_availability
+            FROM prd_mega.gld.gld_availability
         """
         return self.execute_query(query)
