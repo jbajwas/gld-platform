@@ -44,3 +44,5 @@ AgGrid(
     height=600,
     theme="streamlit"
 )
+
+st.caption("**Desktop:** Hold **Ctrl** (Windows) or **⌘ Cmd** (Mac) + click column headers to add multiple sort levels")
