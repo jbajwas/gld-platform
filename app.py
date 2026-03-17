@@ -23,9 +23,16 @@ gb.configure_default_column(
     filterable=True,
     sortable=True,
     resizable=True,
-    filter=True
+    filter=True,
+    type=["rightAligned"]
 )
-gb.configure_grid_options(suppressPaginationPanel=True)
+gb.configure_grid_options(
+    suppressPaginationPanel=True,
+    multiSortKey="ctrl"
+)
+gb.configure_column("country", sort="asc", sortIndex=0, type=["rightAligned"])
+gb.configure_column("year", sort="asc", sortIndex=1, type=["rightAligned"])
+gb.configure_column("survey", type=["rightAligned"])
 gb.configure_side_bar(filters_panel=True, columns_panel=True)
 grid_options = gb.build()
 
