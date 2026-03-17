@@ -36,7 +36,7 @@ gb.configure_column("survey", type=["rightAligned"])
 gb.configure_side_bar(filters_panel=True, columns_panel=True)
 grid_options = gb.build()
 
-AgGrid(
+grid_response = AgGrid(
     df,
     gridOptions=grid_options,
     update_mode=GridUpdateMode.FILTERING_CHANGED,
@@ -45,4 +45,18 @@ AgGrid(
     theme="streamlit"
 )
 
-st.caption("**Desktop:** Hold **Ctrl** (Windows) or **⌘ Cmd** (Mac) + click column headers to add multiple sort levels")
+filtered_count = len(grid_response["data"])
+total_count = len(df)
+if filtered_count == total_count:
+    row_info = f"<strong>{total_count}</strong> rows"
+else:
+    row_info = f"<strong>{filtered_count}</strong> of <strong>{total_count}</strong> rows"
+
+sort_hint = "<strong>Desktop:</strong> Hold <strong>Ctrl</strong> (Windows) or <strong>⌘ Cmd</strong> (Mac) + click column headers to add multiple sort levels"
+st.markdown(
+    f'<div style="display: flex; justify-content: space-between; font-size: 0.875rem; color: rgba(49, 51, 63, 0.6);">'
+    f'<span>{row_info}</span>'
+    f'<span>{sort_hint}</span>'
+    f'</div>',
+    unsafe_allow_html=True
+)
