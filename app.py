@@ -10,7 +10,7 @@ st.set_page_config(
 )
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=300, show_spinner="Loading data...")
 def load_data():
     qs = QueryService.get_instance()
     return qs.get_gld_availability()
