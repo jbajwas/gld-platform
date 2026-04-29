@@ -9,6 +9,7 @@ dependencies = [
     "rsconnect-python",
     "databricks-sql-connector[pyarrow]",
     "databricks-sdk",
+    "tornado",
 ]
 
 [tool.uv]

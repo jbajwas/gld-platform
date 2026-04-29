@@ -397,6 +397,7 @@ dependencies = [
     { name = "rsconnect-python" },
     { name = "streamlit" },
     { name = "streamlit-aggrid" },
+    { name = "tornado" },
 ]
 
 [package.metadata]
@@ -407,6 +408,7 @@ requires-dist = [
     { name = "rsconnect-python" },
     { name = "streamlit" },
     { name = "streamlit-aggrid" },
+    { name = "tornado" },
 ]
 
 [package.metadata.requires-dev]
