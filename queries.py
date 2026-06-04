@@ -85,9 +85,10 @@ class QueryService:
         self._cache_set(query, df)
         return df.copy(deep=True)
 
-    def get_gld_availability(self):
+    def get_gld_variable_coverage(self):
         query = """
             SELECT *
-            FROM prd_mega.sgld48.gld_availability
+            FROM prd_mega.sgld48.gld_variable_coverage
         """
         return self.execute_query(query)
+
