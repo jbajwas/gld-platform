@@ -1,0 +1,10 @@
+name: gld-platform
+title:
+username: mgronert
+account: mgronert
+server: internal-server
+hostUrl: https://datanalytics-int.worldbank.org/__api__
+appId: 1698
+bundleId: 30950
+url: https://datanalytics-int.worldbank.org/content/38a22913-0c71-469d-9f97-aa96412a1c60/
+version: 1
