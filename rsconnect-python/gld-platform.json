@@ -1,7 +1,7 @@
 {
     "https://datanalytics-int.worldbank.org": {
         "server_url": "https://datanalytics-int.worldbank.org",
-        "filename": "C:\\Users\\wb584706\\OneDrive - WBG\\Documents\\GitHub\\gld-platform",
+       "filename": ".",
         "app_url": "https://datanalytics-int.worldbank.org/content/f657f177-5de7-45ee-b98a-c917506acfbe/",
         "app_id": "1709",
         "app_guid": "f657f177-5de7-45ee-b98a-c917506acfbe",

@@ -1,7 +1,12 @@
-import json
+import yaml
+import pandas as pd
 import streamlit as st
-import streamlit.components.v1 as components
+from pathlib import Path
+from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, ColumnsAutoSizeMode
 from queries import QueryService
+from dotenv import load_dotenv
+
+load_dotenv()
 
 st.set_page_config(
     page_title="GLD Survey Finder",
@@ -9,365 +14,203 @@ st.set_page_config(
     layout="wide"
 )
 
-@st.cache_data(ttl=300, show_spinner="Loading data...")
+st.markdown("""
+<style>
+    .gld-header {
+        background: #003366;
+        color: white;
+        padding: 14px 24px;
+        border-radius: 4px;
+        margin-bottom: 16px;
+    }
+    .gld-header h1 { font-size: 22px; font-weight: bold; margin: 0; }
+    .gld-header p  { font-size: 13px; opacity: 0.85; margin: 4px 0 0 0; }
+
+    .stTabs [data-baseweb="tab-list"] {
+        background-color: #dce3ed;
+        border-bottom: 3px solid #003366;
+        gap: 0px;
+    }
+    .stTabs [data-baseweb="tab"] { color: #444; font-size: 13px; padding: 10px 20px; }
+    .stTabs [aria-selected="true"] {
+        background-color: white;
+        color: #003366;
+        font-weight: bold;
+        border-bottom: 3px solid white;
+    }
+
+    .ag-header-cell       { background-color: #003366 !important; color: white !important; }
+    .ag-header-group-cell { background-color: #1a4d80 !important; color: white !important; font-weight: bold; }
+    .ag-pinned-left-header { background-color: #001f44 !important; }
+    .ag-row-even  { background-color: #f8f9fb !important; }
+    .ag-row-hover { background-color: #eef4ff !important; }
+</style>
+""", unsafe_allow_html=True)
+
+st.markdown("""
+<div class="gld-header">
+    <h1>GLD Survey Finder</h1>
+    <p>Variable coverage across countries and survey years</p>
+</div>
+""", unsafe_allow_html=True)
+
+@st.cache_data(ttl=300, show_spinner=False)
 def load_data():
     qs = QueryService.get_instance()
     df = qs.get_gld_variable_coverage()
-    return df.to_dict(orient="records")
+    return df
 
-surveys = load_data()
-surveys_json = json.dumps(surveys)
+@st.cache_data
+def load_tabs():
+    return yaml.safe_load((Path(__file__).parent / "tabs.yaml").read_text(encoding="utf-8"))
 
-html = f"""
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<style>
-  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
-  body {{ font-family: Arial, sans-serif; font-size: 13px; background: #f0f2f5; }}
+# Loading message while data is fetched
+with st.spinner("Loading survey data - this may take a few minutes..."):
+    df = load_data()
 
-  .site-header {{ background: #003366; color: white; padding: 14px 24px; }}
-  .site-header h1 {{ font-size: 18px; font-weight: bold; }}
-  .site-header p  {{ font-size: 12px; opacity: 0.8; margin-top: 2px; }}
+TABS = load_tabs()
 
-  .tab-bar  {{ display: flex; flex-wrap: wrap; background: #dce3ed; border-bottom: 3px solid #003366; padding: 0 20px; }}
-  .tab-btn  {{ padding: 10px 20px; cursor: pointer; font-size: 13px; color: #444;
-               border: none; background: none; border-bottom: 3px solid transparent; margin-bottom: -3px; }}
-  .tab-btn:hover  {{ background: #c8d3e3; color: #003366; }}
-  .tab-btn.active {{ background: white; color: #003366; font-weight: bold; border-bottom: 3px solid white; }}
+def preprocess(df):
+    df = df.copy()
+    for col in df.columns:
+        if col not in ["country", "survey_year"]:
+            df[col] = df[col].apply(
+                lambda v: "✓" if v == "X" else (
+                    "·" if (v is None or (isinstance(v, float) and pd.isna(v)) or v == "")
+                    else str(v)
+                )
+            )
+    return df
 
-  .controls {{ display: flex; gap: 10px; align-items: center; padding: 10px 20px;
-               background: white; border-bottom: 1px solid #ddd; flex-wrap: wrap; }}
-  .controls input  {{ padding: 6px 10px; border: 1px solid #bbb; border-radius: 4px; font-size: 13px; width: 220px; }}
-  .controls select {{ padding: 6px 10px; border: 1px solid #bbb; border-radius: 4px; font-size: 13px; }}
-  .controls label  {{ font-size: 12px; color: #666; }}
-  .row-count {{ font-size: 12px; color: #888; margin-left: auto; }}
+df_display = preprocess(df)
+countries = sorted(df["country"].dropna().unique().tolist())
 
-  .panel {{ display: none; }}
-  .panel.active {{ display: block; }}
+tab_objects = st.tabs([t["label"] for t in TABS])
 
-  .note-banner {{ background: #fffbe6; border-left: 4px solid #f0a500; padding: 8px 16px;
-                  font-size: 12px; color: #555; margin: 10px 20px 0; border-radius: 2px; }}
+for tab_ui, tab_data in zip(tab_objects, TABS):
+    with tab_ui:
 
-  .table-wrap {{ margin: 10px 20px 20px; overflow-x: auto; border: 1px solid #ccc;
-                 border-radius: 4px; background: white; max-height: 65vh; overflow-y: auto; }}
+        if tab_data.get("note"):
+            st.info(tab_data["note"])
 
-  table {{ border-collapse: collapse; white-space: nowrap; width: 100%; }}
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            search = st.text_input(
+                "Search",
+                placeholder="Filter by country or year...",
+                key=f"search_{tab_data['id']}"
+            )
+        with col2:
+            country_filter = st.selectbox(
+                "Country",
+                ["All countries"] + countries,
+                key=f"country_{tab_data['id']}"
+            )
 
-  tr.group-row th {{ background: #003366; color: white; font-size: 11px;
-                     padding: 5px 8px; text-align: center; border-right: 1px solid #1a4d80; }}
-  tr.group-row th.empty {{ background: #001f44; }}
+        filtered = df_display.copy()
+        if search:
+            mask = (
+                filtered["country"].str.contains(search, case=False, na=False) |
+                filtered["survey_year"].astype(str).str.contains(search, na=False)
+            )
+            filtered = filtered[mask]
+        if country_filter != "All countries":
+            filtered = filtered[filtered["country"] == country_filter]
 
-  tr.def-row th {{ background: #e8eef5; color: #333; font-size: 11px; font-weight: normal;
-                   padding: 4px 8px; border-bottom: 1px solid #ccc; border-right: 1px solid #ddd;
-                   white-space: normal; max-width: 120px; vertical-align: top; text-align: center; }}
+        n = len(filtered)
+        st.caption(f"{n} survey{'s' if n != 1 else ''}")
 
-  tr.var-row th {{ background: #1a4d80; color: white; font-size: 11px; font-weight: bold;
-                   padding: 5px 8px; border-right: 1px solid #2a5d90;
-                   position: sticky; top: 0; z-index: 3; }}
+        tab_vars = ["country", "survey_year"] + [
+            c["var"] for g in tab_data["groups"] for c in g["cols"]
+        ]
+        tab_vars = [v for v in tab_vars if v in filtered.columns]
+        tab_df = filtered[tab_vars].reset_index(drop=True)
 
-  td {{ padding: 5px 8px; border-bottom: 1px solid #eee; border-right: 1px solid #f0f0f0;
-        font-size: 12px; background: white; }}
-  tr:hover td {{ background: #eef4ff !important; }}
-  tr:nth-child(even) td {{ background: #f8f9fb; }}
+        if len(tab_vars) <= 2:
+            st.warning("No data columns found for this tab in the current dataset.")
+            continue
 
-  td.country {{ font-weight: bold; color: #003366; min-width: 60px; }}
-  td.year    {{ color: #555; min-width: 55px; }}
-  td.x-mark  {{ text-align: center; color: #1a7a1a; font-weight: bold; font-size: 14px; }}
-  td.empty   {{ text-align: center; color: #ddd; font-size: 12px; }}
-  td.text-val {{ color: #444; max-width: 130px; overflow: hidden; text-overflow: ellipsis; }}
-</style>
-</head>
-<body>
+        # Count how many data columns exist (excluding country + year)
+        n_data_cols = len(tab_vars) - 2
 
-<div class="site-header">
-  <h1>GLD Survey Finder</h1>
-  <p>Variable coverage across countries and survey years</p>
-</div>
+        # For tabs with few columns, make them wider to fill space
+        # For tabs with many columns, use a fixed comfortable width
+        if n_data_cols <= 8:
+            data_col_flex = 1          # stretch to fill available width
+            data_col_width = None
+        else:
+            data_col_flex = None
+            data_col_width = 140       # fixed width for dense tabs
 
-<div class="tab-bar" id="tabBar"></div>
-<div id="allPanels"></div>
+        col_defs = [
+            {
+                "field": "country",
+                "headerName": "Country",
+                "pinned": "left",
+                "width": 150,
+                "suppressMovable": True,
+                "cellStyle": {"fontWeight": "bold", "color": "#003366"}
+            },
+            {
+                "field": "survey_year",
+                "headerName": "Year",
+                "pinned": "left",
+                "width": 90,
+                "suppressMovable": True,
+                "cellStyle": {"color": "#555"}
+            },
+        ]
 
-<script>
-const ALL_SURVEYS = {surveys_json};
+        for group in tab_data["groups"]:
+            children = []
+            for c in group["cols"]:
+                if c["var"] not in tab_df.columns:
+                    continue
+                child = {
+                    "field": c["var"],
+                    "headerName": c["def"],
+                    "wrapHeaderText": True,
+                    "autoHeaderHeight": True,
+                    "cellStyle": {"textAlign": "center"},
+                }
+                if data_col_flex:
+                    child["flex"] = data_col_flex
+                else:
+                    child["width"] = data_col_width
+                children.append(child)
 
-const TABS = [
-  {{
-    id: "data", label: "Data", note: null,
-    groups: [
-      {{ label: "Geographic Breakdown", cols: [
-        {{ var: "urban", def: "Urban/Rural" }},
-        {{ var: "supid", def: "Subnational identifier" }}
-      ]}},
-      {{ label: "Demographics", cols: [
-        {{ var: "hsize", def: "Household Size" }},
-        {{ var: "age",   def: "Age" }},
-        {{ var: "male",  def: "Gender" }}
-      ]}},
-      {{ label: "Education", cols: [
-        {{ var: "educat7", def: "Years of education: 7 Categories" }},
-        {{ var: "educat5", def: "Years of education: 5 Categories" }},
-        {{ var: "educat4", def: "Years of education: 4 Categories" }}
-      ]}},
-      {{ label: "Vocational Training", cols: [
-        {{ var: "vocational",          def: "Any vocational training" }},
-        {{ var: "vocational_type",     def: "Type" }},
-        {{ var: "vocational_length_l", def: "Length" }},
-        {{ var: "vocational_financed", def: "Financed by" }}
-      ]}},
-      {{ label: "Labor Status", cols: [
-        {{ var: "lstatus",         def: "Labor market status" }},
-        {{ var: "underemployment", def: "Underemployment" }},
-        {{ var: "nlfreason",       def: "Reason for not in LF" }},
-        {{ var: "empstat",         def: "Type of employment" }}
-      ]}},
-      {{ label: "Main Job — Occupation", cols: [
-        {{ var: "occup",        def: "Occupation type: 10 Categories" }},
-        {{ var: "occup_isco_x", def: "Occupation in ISCO codes" }},
-        {{ var: "isco_version", def: "ISCO version" }}
-      ]}},
-      {{ label: "Main Job — Industry", cols: [
-        {{ var: "industrycat10",      def: "Industry type: 10 categories" }},
-        {{ var: "industrycat_isic_x", def: "Industry in ISIC codes" }},
-        {{ var: "isic_version",       def: "ISIC Version" }}
-      ]}},
-      {{ label: "Main Job — Wages & Hours", cols: [
-        {{ var: "wage_no_compen", def: "Wage" }},
-        {{ var: "whours",         def: "Hours of Work" }},
-        {{ var: "unitwage",       def: "Wage payment interval" }}
-      ]}},
-      {{ label: "Main Job — Job Quality", cols: [
-        {{ var: "contract",  def: "Contract" }},
-        {{ var: "healthins", def: "Health Insurance" }},
-        {{ var: "socialsec", def: "Social Security" }}
-      ]}},
-      {{ label: "Main Job — Firm Size", cols: [
-        {{ var: "firmsize_l", def: "Firm size: Lower limit" }},
-        {{ var: "firmsize_u", def: "Firm size: Upper limit" }}
-      ]}},
-      {{ label: "Second Job", cols: [
-        {{ var: "empstat_2", def: "Is there second job information" }}
-      ]}},
-      {{ label: "Recall Information", cols: [
-        {{ var: "lstatus_year", def: "Is there 1 year recall information" }}
-      ]}},
-      {{ label: "Migration", cols: [
-        {{ var: "migrated_binary",       def: "Migrated (binary)" }},
-        {{ var: "migrated_years",        def: "Years since migration" }},
-        {{ var: "migrated_from_urban",   def: "Migrated from urban" }},
-        {{ var: "migrated_from_cat",     def: "Migrated from (category)" }},
-        {{ var: "migrated_from_country", def: "Migrated from country" }},
-        {{ var: "migrated_reason",       def: "Reason for migration" }}
-      ]}},
-      {{ label: "Disability", cols: [
-        {{ var: "eye_dsablty",    def: "Disability (eye)" }},
-        {{ var: "hear_dsablty",   def: "Disability (hearing)" }},
-        {{ var: "walk_dsablty",   def: "Disability (walking)" }},
-        {{ var: "conc_dsord",     def: "Concentration difficulty" }},
-        {{ var: "slfcre_dsablty", def: "Self-care disability" }},
-        {{ var: "comm_dsablty",   def: "Communication disability" }}
-      ]}},
-      {{ label: "Survey Details", cols: [
-        {{ var: "icls_v",                    def: "ICLS Version" }},
-        {{ var: "survname",                  def: "Survey Name" }},
-        {{ var: "nationally_representative", def: "Nationally Representative" }}
-      ]}},
-      {{ label: "Potentials (not pre-constructed)", cols: [
-        {{ var: "informality",       def: "Informal Sector" }},
-        {{ var: "real_monthly_wage", def: "Real Monthly Earnings $" }}
-      ]}}
-    ]
-  }},
-  {{
-    id: "area", label: "Area Disaggregation",
-    note: "subnatid vars are admin units and represent different things in different countries and years. Sometimes not admin units.",
-    groups: [
-      {{ label: "Area Disaggregation", cols: [
-        {{ var: "subnatid1",   def: "Level 1 Subnational ID available" }},
-        {{ var: "n_subnatid1", def: "Level 1 Subnational ID unique values" }},
-        {{ var: "subnatid2",   def: "Level 2 Subnational ID available" }},
-        {{ var: "n_subnatid2", def: "Level 2 Subnational ID unique values" }},
-        {{ var: "subnatid3",   def: "Level 3 Subnational ID available" }},
-        {{ var: "n_subnatid3", def: "Level 3 Subnational ID unique values" }},
-        {{ var: "subnatid4",   def: "Level 4 Subnational ID available" }},
-        {{ var: "n_subnatid4", def: "Level 4 Subnational ID unique values" }}
-      ]}}
-    ]
-  }},
-  {{
-    id: "occup", label: "Occupation Details",
-    note: "ISCO depth: <75% ending in zero = likely 4-digit; ≥80% ending in zero = likely 3-digit; ≥80% ending in 00 = likely 2-digit. First jobs only.",
-    groups: [
-      {{ label: "Occupation Details", cols: [
-        {{ var: "occup",         def: "Occupation type: 10 Categories" }},
-        {{ var: "present",       def: "Occupation in ISCO codes" }},
-        {{ var: "isco_version",  def: "ISCO version" }},
-        {{ var: "likely_4digit", def: "Likely at 4 digits" }},
-        {{ var: "likely_3digit", def: "Likely at 3 digits" }},
-        {{ var: "likely_2digit", def: "Likely at 2 digits" }}
-      ]}}
-    ]
-  }},
-  {{
-    id: "industry", label: "Industry Details",
-    note: "ISIC depth: Single letters (A–U) = Section; 2 digits = Division; 3 digits = Group; 4 digits = Class. Majority share ≥50% flags likely depth.",
-    groups: [
-      {{ label: "Industry Details", cols: [
-        {{ var: "industrycat10",      def: "Industry type: 10 Categories" }},
-        {{ var: "isic_present",       def: "Industry in ISIC codes" }},
-        {{ var: "isic_version",       def: "ISIC version" }},
-        {{ var: "isic_likely_4digit", def: "Likely at 4 digits (class)" }},
-        {{ var: "isic_likely_3digit", def: "Likely at 3 digits (group)" }},
-        {{ var: "isic_likely_2digit", def: "Likely at 2 digits (division)" }},
-        {{ var: "section_present",    def: "Section level codes present (A–U)" }}
-      ]}}
-    ]
-  }},
-  {{
-    id: "secondjob", label: "Second Job", note: null,
-    groups: [
-      {{ label: "Second Job Details", cols: [
-        {{ var: "empstat_2",       def: "Type of employment: Second Job" }},
-        {{ var: "occup_2",         def: "Occupation type: Second Job" }},
-        {{ var: "industrycat10_2", def: "Industry Type: Second Job" }},
-        {{ var: "wage_total_2",    def: "Wage: Second Job" }},
-        {{ var: "whours_2",        def: "Hours of work: Second Job" }},
-        {{ var: "unitwage_2",      def: "Wage payment interval: Second Job" }},
-        {{ var: "firmsize_l_2",    def: "Firm size lower limit: Second Job" }},
-        {{ var: "firmsize_u_2",    def: "Firm size upper limit: Second Job" }}
-      ]}}
-    ]
-  }},
-  {{
-    id: "recall", label: "Yearly Recall", note: null,
-    groups: [
-      {{ label: "Labor Status", cols: [
-        {{ var: "lstatus_year",         def: "Labor market status: Year" }},
-        {{ var: "underemployment_year", def: "Underemployment: Year" }},
-        {{ var: "nlfreason_year",       def: "Reason for not in LF: Year" }},
-        {{ var: "unempldur_l_year",     def: "Unemployment duration (lower): Year" }},
-        {{ var: "unempldur_u_year",     def: "Unemployment duration (upper): Year" }}
-      ]}},
-      {{ label: "Main Job", cols: [
-        {{ var: "empstat_year",       def: "Type of employment: Year" }},
-        {{ var: "occup_year",         def: "Occupation type: Year" }},
-        {{ var: "industrycat10_year", def: "Industry Type: Year" }},
-        {{ var: "wage_total_year",     def: "Wage: Year" }},
-        {{ var: "whours_year",        def: "Hours of work: Year" }},
-        {{ var: "unitwage_year",      def: "Wage payment interval: Year" }},
-        {{ var: "contract_year",      def: "Contract: Year" }},
-        {{ var: "healthins_year",     def: "Health Insurance: Year" }},
-        {{ var: "socialsec_year",     def: "Social Security: Year" }}
-      ]}},
-      {{ label: "Second Job", cols: [
-        {{ var: "empstat_2_year",        def: "Type of employment: Second Job Year" }},
-        {{ var: "occup_2_year",          def: "Occupation type: Second Job Year" }},
-        {{ var: "industrycat10_2_year",  def: "Industry Type: Second Job Year" }},
-        {{ var: "wage_total_2_year",     def: "Wage: Second Job Year" }},
-        {{ var: "whours_2_year",         def: "Hours of work: Second Job Year" }},
-        {{ var: "unitwage_total_2_year", def: "Wage payment interval: Second Job Year" }}
-      ]}}
-    ]
-  }}
-];
+            if children:
+                col_defs.append({
+                    "headerName": group["label"],
+                    "children": children,
+                    "marryChildren": True
+                })
 
-function getVal(survey, varname) {{
-  if (survey[varname] !== undefined) return survey[varname];
-  return "";
-}}
+        gb = GridOptionsBuilder.from_dataframe(tab_df)
+        gb.configure_default_column(
+            resizable=True,
+            sortable=True,
+            filter=False,
+            wrapHeaderText=True,
+            autoHeaderHeight=True,
+            minWidth=160,
+        )
+        gb.configure_grid_options(
+            suppressColumnVirtualisation=True,
+            groupHeaderHeight=50,
+            headerHeight=120,
+            rowHeight=35,
+        )
+        grid_options = gb.build()
+        grid_options["columnDefs"] = col_defs
 
-function buildTable(tab) {{
-  const allCols = tab.groups.flatMap(g => g.cols);
-  let html = "<table id='table-" + tab.id + "'><thead>";
-  html += "<tr class='group-row'><th class='empty'></th><th class='empty'></th>";
-  tab.groups.forEach(g => {{
-    html += `<th colspan="${{g.cols.length}}">${{g.label}}</th>`;
-  }});
-  html += "</tr>";
-  html += "<tr class='def-row'><th>Country</th><th>Year</th>";
-  allCols.forEach(c => {{ html += `<th>${{c.def}}</th>`; }});
-  html += "</tr>";
-  html += "<tr class='var-row'><th>country</th><th>survey_year</th>";
-  allCols.forEach(c => {{ html += `<th>${{c.var}}</th>`; }});
-  html += "</tr></thead><tbody id='tbody-" + tab.id + "'>";
-  ALL_SURVEYS.forEach(s => {{
-    html += `<tr data-country="${{s.country}}" data-year="${{s.survey_year}}">`;
-    html += `<td class="country">${{s.country}}</td>`;
-    html += `<td class="year">${{s.survey_year}}</td>`;
-    allCols.forEach(c => {{
-      const v = getVal(s, c.var);
-      if (v === "X") html += `<td class="x-mark">✓</td>`;
-      else if (v === "" || v == null) html += `<td class="empty">·</td>`;
-      else html += `<td class="text-val" title="${{v}}">${{v}}</td>`;
-    }});
-    html += "</tr>";
-  }});
-  html += "</tbody></table>";
-  return html;
-}}
+        AgGrid(
+            tab_df,
+            gridOptions=grid_options,
+            height=600,
+            fit_columns_on_grid_load=False,
+            update_mode=GridUpdateMode.NO_UPDATE,
+            allow_unsafe_jscode=False,
+            columns_auto_size_mode=ColumnsAutoSizeMode.NO_AUTOSIZE,
+        )
 
-function filterTable(tabId) {{
-  const search  = document.getElementById("search-" + tabId).value.toLowerCase();
-  const country = document.getElementById("country-" + tabId).value;
-  let visible = 0;
-  document.querySelectorAll("#tbody-" + tabId + " tr").forEach(tr => {{
-    const c = tr.dataset.country || "";
-    const y = tr.dataset.year    || "";
-    const show = (!search || c.toLowerCase().includes(search) || y.includes(search))
-              && (!country || c === country);
-    tr.style.display = show ? "" : "none";
-    if (show) visible++;
-  }});
-  document.getElementById("count-" + tabId).textContent = visible + " survey" + (visible !== 1 ? "s" : "");
-}}
-
-function switchTab(tabId) {{
-  document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
-  document.querySelectorAll(".panel").forEach(p => p.classList.remove("active"));
-  document.querySelector(".tab-btn[data-id='" + tabId + "']").classList.add("active");
-  document.getElementById("panel-" + tabId).classList.add("active");
-}}
-
-const tabBar    = document.getElementById("tabBar");
-const allPanels = document.getElementById("allPanels");
-const countries = [...new Set(ALL_SURVEYS.map(s => s.country))].sort();
-
-TABS.forEach((tab, idx) => {{
-  const btn = document.createElement("button");
-  btn.className = "tab-btn" + (idx === 0 ? " active" : "");
-  btn.dataset.id = tab.id;
-  btn.textContent = tab.label;
-  btn.onclick = () => switchTab(tab.id);
-  tabBar.appendChild(btn);
-
-  const panel = document.createElement("div");
-  panel.className = "panel" + (idx === 0 ? " active" : "");
-  panel.id = "panel-" + tab.id;
-
-  let inner = `
-    <div class="controls">
-      <label>Search:</label>
-      <input type="text" id="search-${{tab.id}}" placeholder="Filter by country or year..." oninput="filterTable('${{tab.id}}')">
-      <label>Country:</label>
-      <select id="country-${{tab.id}}" onchange="filterTable('${{tab.id}}')">
-        <option value="">All countries</option>
-        ${{countries.map(c => `<option value="${{c}}">${{c}}</option>`).join("")}}
-      </select>
-      <span class="row-count" id="count-${{tab.id}}">${{ALL_SURVEYS.length}} surveys</span>
-    </div>`;
-
-  if (tab.note) {{
-    inner += `<div class="note-banner">Note: ${{tab.note}}</div>`;
-  }}
-
-  inner += `<div class="table-wrap">${{buildTable(tab)}}</div>`;
-  panel.innerHTML = inner;
-  allPanels.appendChild(panel);
-}});
-</script>
-</body>
-</html>
-"""
-
-components.html(html, height=900, scrolling=True)

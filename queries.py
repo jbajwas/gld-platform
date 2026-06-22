@@ -5,6 +5,10 @@ import threading
 import pandas as pd
 from databricks import sql
 from databricks.sdk.core import Config, oauth_service_principal
+from dotenv import load_dotenv
+load_dotenv()
+
+
 
 logging.basicConfig(
     level=logging.INFO,

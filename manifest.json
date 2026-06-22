@@ -22,12 +22,6 @@
     "requirements.txt": {
       "checksum": "3d7cc74dd91bcc92514d6d01bf3adacc"
     },
-    ".env": {
-      "checksum": "eece274dfbcc627f13d88fbb115a53ba"
-    },
-    ".env.example": {
-      "checksum": "2d552a2ba9f94c09c1795eca2e273175"
-    },
     ".gitignore": {
       "checksum": "6d383403c2309b96901cbd5299dcb089"
     },
